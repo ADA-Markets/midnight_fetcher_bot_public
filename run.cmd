@@ -67,7 +67,7 @@ timeout /t 2 /nobreak >nul
 start http://localhost:3001
 
 REM Start dev server
-next dev -p 3001
+npx next dev -p 3001
 
 echo.
 echo Next.js stopped.
