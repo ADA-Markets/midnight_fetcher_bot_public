@@ -48,7 +48,7 @@ export HOST=127.0.0.1
 export PORT=9001
 export WORKERS=12
 
-nohup ./hashengine/target/release/hash-server > logs/hash-server.log 2>&1 &
+nohup ./hashengine/target/release/hash-server &>logs/hash-server.log &
 HASH_SERVER_PID=$!
 echo "  - Hash server started (PID: $HASH_SERVER_PID)"
 echo ""
@@ -74,9 +74,8 @@ echo ""
 
 # Start NextJS production server
 echo "Starting Next.js production server..."
-npm start &
-NEXTJS_PID=$!
-echo "  - Next.js server starting (PID: $NEXTJS_PID)..."
+nohup npm start &>logs/node-server.log &
+echo "  - Next.js server starting..."
 echo ""
 
 # Wait for Next.js to be ready
@@ -88,6 +87,4 @@ echo ""
 echo ""
 echo "================================================================================"
 echo "Both services are running!"
-echo "Hash Server PID: $HASH_SERVER_PID"
-echo "Next.js PID: $NEXTJS_PID"
 echo "================================================================================"
