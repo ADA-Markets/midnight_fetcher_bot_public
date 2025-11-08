@@ -11,5 +11,5 @@ set -e  # Exit on error
 echo "Stopping services..."
 killall -w -e "npm start" 2>/dev/null || true
 killall -w -e "hash-server" 2>/dev/null || true
-killall -w "next-server" 2>/dev/null || true
+kill $(pgrep "next-server") 2>/dev/null || true
 echo "Services stopped."
