@@ -262,6 +262,7 @@ cleanup() {
     echo ""
     echo "Stopping services..."
     kill $NEXTJS_PID 2>/dev/null || true
+    kill $(pgrep "next-server")
     pkill -f hash-server 2>/dev/null || true
     echo "Services stopped."
     exit 0
