@@ -195,7 +195,7 @@ sleep 3
 MAX_RETRIES=10
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-    if curl -s http://127.0.0.1:9001/health > /dev/null 2>&1; then
+    if curl -s http://$HOST:$PORT/health > /dev/null 2>&1; then
         echo "  - Hash server is ready!"
         break
     fi
@@ -214,7 +214,7 @@ echo "==========================================================================
 echo "                    Midnight Fetcher Bot - Ready!"
 echo "================================================================================"
 echo ""
-echo "Hash Service: http://127.0.0.1:9001/health"
+echo "Hash Service: http://$HOST:$PORT/health"
 echo "Web Interface: http://localhost:3000"
 echo ""
 echo "Press Ctrl+C to stop the Next.js server (hash server will continue running)"
