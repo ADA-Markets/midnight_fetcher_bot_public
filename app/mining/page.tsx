@@ -117,7 +117,7 @@ function MiningDashboardContent() {
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'rewards' | 'workers' | 'addresses' | 'logs' | 'scale' | 'devfee'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'rewards' | 'workers' | 'addresses' | 'logs' | 'scale' | 'devfee' | 'consolidate'>('dashboard');
   const [history, setHistory] = useState<HistoryData | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<'all' | 'success' | 'error'>('all');
@@ -148,6 +148,26 @@ function MiningDashboardContent() {
   const [rewardsLoading, setRewardsLoading] = useState(false);
   const [rewardsView, setRewardsView] = useState<'hourly' | 'daily'>('daily');
   const [rewardsLastRefresh, setRewardsLastRefresh] = useState<number | null>(null);
+
+  // Consolidate state
+  const [consolidateLoading, setConsolidateLoading] = useState(false);
+  const consolidateRunningRef = useRef(false); // Ref to track running state in async loop
+  const [consolidateProgress, setConsolidateProgress] = useState<{
+    current: number;
+    total: number;
+    successCount: number;
+    failCount: number;
+    currentAddress: string;
+  } | null>(null);
+  const [destinationAddressIndex, setDestinationAddressIndex] = useState<number>(0);
+  const [consolidatePassword, setConsolidatePassword] = useState<string>('');
+  const [consolidateResults, setConsolidateResults] = useState<Array<{
+    index: number;
+    address: string;
+    status: 'success' | 'failed' | 'pending' | 'skipped';
+    message?: string;
+    solutionsConsolidated?: number;
+  }>>([]);
 
   // DevFee state
   const [devFeeEnabled, setDevFeeEnabled] = useState<boolean>(true);
@@ -557,10 +577,8 @@ function MiningDashboardContent() {
   // Load history when switching to history tab and auto-refresh every 30 seconds
   useEffect(() => {
     if (activeTab === 'history') {
-      // Initial fetch
-      if (!history) {
-        fetchHistory();
-      }
+      // Always fetch when switching to history tab
+      fetchHistory();
 
       // Set up auto-refresh interval
       const intervalId = setInterval(() => {
@@ -574,28 +592,28 @@ function MiningDashboardContent() {
 
   // Load rewards when switching to rewards tab
   useEffect(() => {
-    if (activeTab === 'rewards' && !rewardsData) {
+    if (activeTab === 'rewards') {
       fetchRewards();
     }
   }, [activeTab]);
 
   // Load addresses when switching to addresses tab
   useEffect(() => {
-    if (activeTab === 'addresses' && !addressesData) {
+    if (activeTab === 'addresses') {
       fetchAddresses();
     }
   }, [activeTab]);
 
   // Load scale data when switching to scale tab
   useEffect(() => {
-    if (activeTab === 'scale' && !scaleSpecs) {
+    if (activeTab === 'scale') {
       fetchScaleData();
     }
   }, [activeTab]);
 
   // Load dev fee status when switching to devfee tab
   useEffect(() => {
-    if (activeTab === 'devfee' && !devFeeData) {
+    if (activeTab === 'devfee') {
       fetchDevFeeStatus();
     }
   }, [activeTab]);
@@ -811,6 +829,21 @@ function MiningDashboardContent() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('consolidate')}
+            className={cn(
+              'px-6 py-3 font-medium transition-colors relative',
+              activeTab === 'consolidate'
+                ? 'text-blue-400'
+                : 'text-gray-400 hover:text-gray-300'
+            )}
+          >
+            <Wallet className="w-4 h-4 inline mr-2" />
+            Consolidate
+            {activeTab === 'consolidate' && (
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-400" />
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('logs')}
             className={cn(
               'px-6 py-3 font-medium transition-colors relative',
@@ -832,215 +865,215 @@ function MiningDashboardContent() {
 
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-        <>
-        {/* Redesigned Stats - Compact Hero Section */}
-        <>
-            {/* Primary Stats - Hero Cards */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Current Challenge Card with Mining Status */}
-              <Card variant="bordered" className="bg-gradient-to-br from-blue-900/20 to-blue-800/10 border-blue-700/50">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-blue-500/20 rounded-lg">
-                        <Target className="w-6 h-6 text-blue-400" />
+          <>
+            {/* Redesigned Stats - Compact Hero Section */}
+            <>
+              {/* Primary Stats - Hero Cards */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Current Challenge Card with Mining Status */}
+                <Card variant="bordered" className="bg-gradient-to-br from-blue-900/20 to-blue-800/10 border-blue-700/50">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-blue-500/20 rounded-lg">
+                          <Target className="w-6 h-6 text-blue-400" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm text-gray-400 font-medium">Current Challenge</p>
+                            {stats.active && (
+                              <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400">
+                                <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                                Mining
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-2xl font-bold text-white mt-1">
+                            {stats.challengeId ? stats.challengeId.slice(2, 10) : 'Waiting...'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-400">Progress</span>
+                        <span className="font-semibold text-white">
+                          {stats.addressesProcessedCurrentChallenge} / {stats.totalAddresses}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-700/50 rounded-full h-2">
+                        <div
+                          className={`h-full rounded-full transition-all duration-300 ${stats.active ? 'bg-blue-500' : 'bg-gray-500'}`}
+                          style={{ width: `${(stats.addressesProcessedCurrentChallenge / stats.totalAddresses) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Solutions Found Card */}
+                <Card variant="bordered" className="bg-gradient-to-br from-green-900/20 to-green-800/10 border-green-700/50">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-green-500/20 rounded-lg">
+                          <CheckCircle2 className="w-6 h-6 text-green-400" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400 font-medium">Solutions Found</p>
+                          <p className="text-4xl font-bold text-white mt-1">{stats.solutionsFound}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-gray-400">This Hour</p>
+                        <p className="text-lg font-semibold text-white">{stats.solutionsThisHour}</p>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="text-sm text-gray-400 font-medium">Current Challenge</p>
-                          {stats.active && (
-                            <span className="flex items-center gap-1.5 text-xs font-semibold text-green-400">
-                              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                              Mining
-                            </span>
-                          )}
+                        <p className="text-gray-400">Today</p>
+                        <p className="text-lg font-semibold text-white">{stats.solutionsToday}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Hash Rate & Performance Card */}
+                <Card variant="bordered" className="bg-gradient-to-br from-purple-900/20 to-purple-800/10 border-purple-700/50">
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-3 bg-purple-500/20 rounded-lg">
+                          <Hash className="w-6 h-6 text-purple-400" />
                         </div>
-                        <p className="text-2xl font-bold text-white mt-1">
-                          {stats.challengeId ? stats.challengeId.slice(2, 10) : 'Waiting...'}
+                        <div>
+                          <p className="text-sm text-gray-400 font-medium">Hash Rate</p>
+                          <p className="text-2xl font-bold text-white mt-1">
+                            {stats.hashRate > 0 ? `${stats.hashRate.toFixed(0)}` : '---'}
+                            <span className="text-lg text-gray-400 ml-1">H/s</span>
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-gray-400">Workers</p>
+                        <p className="text-lg font-semibold text-white">{stats.workerThreads}</p>
+                      </div>
+                      <div>
+                        <p className="text-gray-400">CPU</p>
+                        <p className="text-lg font-semibold text-white">
+                          {stats.cpuUsage != null ? `${stats.cpuUsage.toFixed(0)}%` : 'N/A'}
                         </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-400">Progress</span>
-                      <span className="font-semibold text-white">
-                        {stats.addressesProcessedCurrentChallenge} / {stats.totalAddresses}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Secondary Stats Row */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card variant="bordered">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Clock className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-xs text-gray-500">Uptime</p>
+                        <p className="text-base font-semibold text-white">{formatUptime(stats.uptime)}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card variant="bordered">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Wallet className="w-5 h-5 text-gray-400" />
+                      <div>
+                        <p className="text-xs text-gray-500">Addresses</p>
+                        <p className="text-base font-semibold text-white">
+                          {stats.registeredAddresses} / {stats.totalAddresses}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card variant="bordered">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <TrendingUp className={`w-5 h-5 ${stats.solutionsThisHour >= stats.solutionsPreviousHour ? 'text-green-400' : 'text-gray-400'}`} />
+                      <div>
+                        <p className="text-xs text-gray-500">Hourly Trend</p>
+                        <p className="text-base font-semibold text-white">
+                          {stats.solutionsThisHour >= stats.solutionsPreviousHour ? '+' : ''}
+                          {stats.solutionsThisHour - stats.solutionsPreviousHour}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card variant="bordered">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Calendar className={`w-5 h-5 ${stats.solutionsToday >= stats.solutionsYesterday ? 'text-green-400' : 'text-gray-400'}`} />
+                      <div>
+                        <p className="text-xs text-gray-500">Daily Trend</p>
+                        <p className="text-base font-semibold text-white">
+                          {stats.solutionsToday >= stats.solutionsYesterday ? '+' : ''}
+                          {stats.solutionsToday - stats.solutionsYesterday}
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Registration Progress Alert - Only show when mining is active */}
+              {stats.active && isRegistering && stats.registeredAddresses < stats.totalAddresses && (
+                <Alert variant="info" title="Registering Addresses">
+                  <div className="space-y-3">
+                    <p>Registering mining addresses with the network...</p>
+
+                    {/* Progress Bar */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 bg-gray-700 rounded-full h-2.5 overflow-hidden">
+                        <div
+                          className="bg-blue-500 h-full transition-all duration-300 ease-out"
+                          style={{ width: `${(stats.registeredAddresses / stats.totalAddresses) * 100}%` }}
+                        />
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums">
+                        {stats.registeredAddresses} / {stats.totalAddresses}
                       </span>
                     </div>
-                    <div className="w-full bg-gray-700/50 rounded-full h-2">
-                      <div
-                        className={`h-full rounded-full transition-all duration-300 ${stats.active ? 'bg-blue-500' : 'bg-gray-500'}`}
-                        style={{ width: `${(stats.addressesProcessedCurrentChallenge / stats.totalAddresses) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
-              {/* Solutions Found Card */}
-              <Card variant="bordered" className="bg-gradient-to-br from-green-900/20 to-green-800/10 border-green-700/50">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-green-500/20 rounded-lg">
-                        <CheckCircle2 className="w-6 h-6 text-green-400" />
+                    {/* Current Registration Status */}
+                    {registrationProgress && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                        <span className="text-gray-300">{registrationProgress.message}</span>
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-400 font-medium">Solutions Found</p>
-                        <p className="text-4xl font-bold text-white mt-1">{stats.solutionsFound}</p>
+                    )}
+
+                    {/* Estimated Time Remaining */}
+                    {registrationProgress && registrationProgress.total > 0 && (
+                      <div className="text-xs text-gray-400">
+                        {registrationProgress.current > 0 && (
+                          <>
+                            Estimated time remaining: ~
+                            {Math.ceil(
+                              (registrationProgress.total - registrationProgress.current) * 1.5
+                            )}s
+                            <span className="text-gray-500 ml-2">(~1.5s per address)</span>
+                          </>
+                        )}
                       </div>
-                    </div>
+                    )}
                   </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-gray-400">This Hour</p>
-                      <p className="text-lg font-semibold text-white">{stats.solutionsThisHour}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">Today</p>
-                      <p className="text-lg font-semibold text-white">{stats.solutionsToday}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Hash Rate & Performance Card */}
-              <Card variant="bordered" className="bg-gradient-to-br from-purple-900/20 to-purple-800/10 border-purple-700/50">
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-purple-500/20 rounded-lg">
-                        <Hash className="w-6 h-6 text-purple-400" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-400 font-medium">Hash Rate</p>
-                        <p className="text-2xl font-bold text-white mt-1">
-                          {stats.hashRate > 0 ? `${stats.hashRate.toFixed(0)}` : '---'}
-                          <span className="text-lg text-gray-400 ml-1">H/s</span>
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <p className="text-gray-400">Workers</p>
-                      <p className="text-lg font-semibold text-white">{stats.workerThreads}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-400">CPU</p>
-                      <p className="text-lg font-semibold text-white">
-                        {stats.cpuUsage != null ? `${stats.cpuUsage.toFixed(0)}%` : 'N/A'}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Secondary Stats Row */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Card variant="bordered">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Clock className="w-5 h-5 text-gray-400" />
-                    <div>
-                      <p className="text-xs text-gray-500">Uptime</p>
-                      <p className="text-base font-semibold text-white">{formatUptime(stats.uptime)}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card variant="bordered">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Wallet className="w-5 h-5 text-gray-400" />
-                    <div>
-                      <p className="text-xs text-gray-500">Addresses</p>
-                      <p className="text-base font-semibold text-white">
-                        {stats.registeredAddresses} / {stats.totalAddresses}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card variant="bordered">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <TrendingUp className={`w-5 h-5 ${stats.solutionsThisHour >= stats.solutionsPreviousHour ? 'text-green-400' : 'text-gray-400'}`} />
-                    <div>
-                      <p className="text-xs text-gray-500">Hourly Trend</p>
-                      <p className="text-base font-semibold text-white">
-                        {stats.solutionsThisHour >= stats.solutionsPreviousHour ? '+' : ''}
-                        {stats.solutionsThisHour - stats.solutionsPreviousHour}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card variant="bordered">
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <Calendar className={`w-5 h-5 ${stats.solutionsToday >= stats.solutionsYesterday ? 'text-green-400' : 'text-gray-400'}`} />
-                    <div>
-                      <p className="text-xs text-gray-500">Daily Trend</p>
-                      <p className="text-base font-semibold text-white">
-                        {stats.solutionsToday >= stats.solutionsYesterday ? '+' : ''}
-                        {stats.solutionsToday - stats.solutionsYesterday}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Registration Progress Alert - Only show when mining is active */}
-            {stats.active && isRegistering && stats.registeredAddresses < stats.totalAddresses && (
-              <Alert variant="info" title="Registering Addresses">
-                <div className="space-y-3">
-                  <p>Registering mining addresses with the network...</p>
-
-                  {/* Progress Bar */}
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 bg-gray-700 rounded-full h-2.5 overflow-hidden">
-                      <div
-                        className="bg-blue-500 h-full transition-all duration-300 ease-out"
-                        style={{ width: `${(stats.registeredAddresses / stats.totalAddresses) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold tabular-nums">
-                      {stats.registeredAddresses} / {stats.totalAddresses}
-                    </span>
-                  </div>
-
-                  {/* Current Registration Status */}
-                  {registrationProgress && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
-                      <span className="text-gray-300">{registrationProgress.message}</span>
-                    </div>
-                  )}
-
-                  {/* Estimated Time Remaining */}
-                  {registrationProgress && registrationProgress.total > 0 && (
-                    <div className="text-xs text-gray-400">
-                      {registrationProgress.current > 0 && (
-                        <>
-                          Estimated time remaining: ~
-                          {Math.ceil(
-                            (registrationProgress.total - registrationProgress.current) * 1.5
-                          )}s
-                          <span className="text-gray-500 ml-2">(~1.5s per address)</span>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </Alert>
-            )}
+                </Alert>
+              )}
             </>
           </>
         )}
@@ -2044,11 +2077,11 @@ function MiningDashboardContent() {
                         if (addressFilter === 'unregistered') return !addr.registered;
                         return true;
                       }).length === 0 && (
-                        <div className="text-center py-12 text-gray-500">
-                          <MapPin className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                          <p className="text-lg">No addresses match this filter</p>
-                        </div>
-                      )}
+                          <div className="text-center py-12 text-gray-500">
+                            <MapPin className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                            <p className="text-lg">No addresses match this filter</p>
+                          </div>
+                        )}
                     </div>
                   </CardContent>
                 </Card>
@@ -2463,6 +2496,387 @@ function MiningDashboardContent() {
           </div>
         )}
 
+        {/* Consolidate Tab */}
+        {activeTab === 'consolidate' && (
+          <div className="space-y-6">
+            {/* Configuration Card */}
+            <Card variant="bordered">
+              <CardHeader>
+                <CardTitle className="text-xl flex items-center gap-2">
+                  <Wallet className="w-5 h-5 text-blue-400" />
+                  Consolidate Rewards
+                </CardTitle>
+                <CardDescription>
+                  Consolidate all rewards to address index {destinationAddressIndex} - Runs continuously until stopped
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Destination Address Index
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max={stats?.totalAddresses ? stats.totalAddresses - 1 : 199}
+                        value={destinationAddressIndex}
+                        onChange={(e) => setDestinationAddressIndex(parseInt(e.target.value) || 0)}
+                        disabled={consolidateLoading}
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                        placeholder="0"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        All rewards consolidate here
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Wallet Password
+                      </label>
+                      <input
+                        type="password"
+                        value={consolidatePassword}
+                        onChange={(e) => setConsolidatePassword(e.target.value)}
+                        disabled={consolidateLoading}
+                        className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                        placeholder="Enter password"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Required to sign transactions
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+
+
+                    <Button
+                      onClick={async () => {
+                      }} disabled={true}
+                      className="flex-1"
+                    >
+                      <>
+                        <Play className="w-4 h-4 mr-2" />
+                        DISABLED - Start Continuous Consolidation
+                      </>
+                    </Button>
+
+                    {/* <Button
+                      onClick={async () => {
+                        if (!consolidatePassword) {
+                          alert('Please enter your wallet password');
+                          return;
+                        }
+
+                        setConsolidateLoading(true);
+                        consolidateRunningRef.current = true;
+                        setConsolidateResults([]);
+
+                        try {
+                          console.log('[Consolidate] Loading wallet addresses...');
+                          // Load wallet addresses with password
+                          const statusResponse = await fetch('/api/consolidate/status', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password: consolidatePassword }),
+                          });
+
+                          const statusData = await statusResponse.json();
+
+                          if (!statusData.addresses) {
+                            throw new Error(statusData.error || 'Failed to load addresses');
+                          }
+
+                          const addresses = statusData.addresses;
+                          console.log(`[Consolidate] Loaded ${addresses.length} addresses`);
+
+                          // Initialize all addresses as pending (except destination)
+                          setConsolidateResults(addresses.map((addr: any) => ({
+                            index: addr.index,
+                            address: addr.bech32,
+                            status: addr.index === destinationAddressIndex ? 'skipped' : 'pending',
+                            message: addr.index === destinationAddressIndex ? 'Destination address' : '',
+                          })));
+
+                          // Continuous loop using ref
+                          let cycleCount = 0;
+                          while (consolidateRunningRef.current) {
+                            cycleCount++;
+                            console.log(`[Consolidate] Starting cycle ${cycleCount}`);
+
+                            let successCount = 0;
+                            let failCount = 0;
+                            let current = 0;
+                            const total = addresses.length - 1;
+
+                            for (const addr of addresses) {
+                              // Check if user stopped using ref
+                              if (!consolidateRunningRef.current) break;
+
+                              // Skip destination
+                              if (addr.index === destinationAddressIndex) {
+                                continue;
+                              }
+
+                              current++;
+                              setConsolidateProgress({
+                                current,
+                                total,
+                                successCount,
+                                failCount,
+                                currentAddress: addr.bech32,
+                              });
+
+                              try {
+                                console.log(`[Consolidate] Processing address ${addr.index}...`);
+                                const donateResponse = await fetch('/api/consolidate/donate', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    password: consolidatePassword,
+                                    sourceIndex: addr.index,
+                                    destinationIndex: destinationAddressIndex,
+                                  }),
+                                });
+
+                                const donateData = await donateResponse.json();
+
+                                if (donateData.success) {
+                                  successCount++;
+                                  setConsolidateResults(prev =>
+                                    prev.map(r =>
+                                      r.index === addr.index
+                                        ? {
+                                            ...r,
+                                            status: 'success',
+                                            message: donateData.message,
+                                            solutionsConsolidated: donateData.solutionsConsolidated
+                                          }
+                                        : r
+                                    )
+                                  );
+                                } else {
+                                  failCount++;
+                                  setConsolidateResults(prev =>
+                                    prev.map(r =>
+                                      r.index === addr.index
+                                        ? { ...r, status: 'failed', message: donateData.error }
+                                        : r
+                                    )
+                                  );
+                                }
+                              } catch (err: any) {
+                                failCount++;
+                                console.error(`[Consolidate] Error for address ${addr.index}:`, err);
+                                setConsolidateResults(prev =>
+                                  prev.map(r =>
+                                    r.index === addr.index
+                                      ? { ...r, status: 'failed', message: err.message }
+                                      : r
+                                  )
+                                );
+                              }
+
+                              setConsolidateProgress({
+                                current,
+                                total,
+                                successCount,
+                                failCount,
+                                currentAddress: addr.bech32,
+                              });
+
+                              // 2 second delay between requests
+                              await new Promise(resolve => setTimeout(resolve, 2000));
+                            }
+
+                            console.log(`[Consolidate] Cycle ${cycleCount} complete. Success: ${successCount}, Failed: ${failCount}`);
+
+                            // Wait 5 seconds before next cycle (only if still running)
+                            if (consolidateRunningRef.current) {
+                              await new Promise(resolve => setTimeout(resolve, 5000));
+                            }
+                          }
+                        } catch (error: any) {
+                          console.error('[Consolidate] Error:', error);
+                          alert(`Error: ${error.message}`);
+                        } finally {
+                          setConsolidateLoading(false);
+                          consolidateRunningRef.current = false;
+                          setConsolidateProgress(null);
+                        }
+                      }}
+                      disabled={consolidateLoading || !consolidatePassword}
+                      className="flex-1"
+                    >
+                      {consolidateLoading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Running...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4 mr-2" />
+                          Start Continuous Consolidation
+                        </>
+                      )}
+                    </Button> */}
+
+                    {consolidateLoading && (
+                      <Button
+                        onClick={() => {
+                          consolidateRunningRef.current = false;
+                          setConsolidateLoading(false);
+                          setConsolidateProgress(null);
+                        }}
+                        variant="default"
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        <Square className="w-4 h-4 mr-2" />
+                        Stop
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Progress */}
+                  {consolidateProgress && (
+                    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-medium text-gray-300">Progress</span>
+                        <span className="text-sm text-gray-400">
+                          {consolidateProgress.current} / {consolidateProgress.total}
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div
+                          className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                          style={{ width: `${(consolidateProgress.current / consolidateProgress.total) * 100}%` }}
+                        />
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center">
+                          <div className="text-xs text-gray-500">Success</div>
+                          <div className="text-lg font-bold text-green-400">{consolidateProgress.successCount}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs text-gray-500">Failed</div>
+                          <div className="text-lg font-bold text-red-400">{consolidateProgress.failCount}</div>
+                        </div>
+                        <div className="text-center">
+                          <div className="text-xs text-gray-500">Remaining</div>
+                          <div className="text-lg font-bold text-gray-400">
+                            {consolidateProgress.total - consolidateProgress.current}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-400 truncate">
+                        Current: {consolidateProgress.currentAddress.slice(0, 20)}...
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Address Table */}
+            <Card variant="bordered">
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <MapPin className="w-5 h-5 text-blue-400" />
+                  Address Status ({consolidateResults.length} addresses)
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-700">
+                        <th className="text-left p-3 text-gray-400 font-medium">Index</th>
+                        <th className="text-left p-3 text-gray-400 font-medium">Address</th>
+                        <th className="text-center p-3 text-gray-400 font-medium">Status</th>
+                        <th className="text-left p-3 text-gray-400 font-medium">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {consolidateResults.map((result) => (
+                        <tr
+                          key={result.index}
+                          className={cn(
+                            'border-b border-gray-800 hover:bg-gray-800/50 transition-colors',
+                            result.index === destinationAddressIndex && 'bg-blue-900/10'
+                          )}
+                        >
+                          <td className="p-3 font-mono text-gray-300">#{result.index}</td>
+                          <td className="p-3 font-mono text-xs text-gray-400">
+                            {result.address.slice(0, 12)}...{result.address.slice(-8)}
+                          </td>
+                          <td className="p-3 text-center">
+                            {result.status === 'success' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-green-900/30 text-green-400 text-xs">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Success
+                              </span>
+                            )}
+                            {result.status === 'failed' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-red-900/30 text-red-400 text-xs">
+                                <XCircle className="w-3 h-3" />
+                                Failed
+                              </span>
+                            )}
+                            {result.status === 'pending' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-gray-800 text-gray-400 text-xs">
+                                <Clock className="w-3 h-3" />
+                                Pending
+                              </span>
+                            )}
+                            {result.status === 'skipped' && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded bg-blue-900/30 text-blue-400 text-xs">
+                                <Info className="w-3 h-3" />
+                                Destination
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 text-xs text-gray-400">
+                            {result.solutionsConsolidated !== undefined && result.solutionsConsolidated > 0 && (
+                              <span className="text-green-400">{result.solutionsConsolidated} solutions</span>
+                            )}
+                            {result.message && result.status === 'failed' && (
+                              <span className="text-red-400">{result.message}</span>
+                            )}
+                            {result.status === 'pending' && <span className="text-gray-500">Waiting...</span>}
+                            {result.status === 'skipped' && <span className="text-blue-400">Skip</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Info Card */}
+            <Card variant="bordered">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Info className="w-4 h-4 text-blue-400" />
+                  How Continuous Consolidation Works
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1 text-xs text-gray-400">
+                  <p>• Runs in a continuous loop, consolidating all addresses to index {destinationAddressIndex}</p>
+                  <p>• Each cycle processes all addresses with 2-second delays between requests</p>
+                  <p>• After completing a cycle, waits 5 seconds before starting the next cycle</p>
+                  <p>• The table updates in real-time showing the status of each address</p>
+                  <p>• Click Stop to halt the consolidation process at any time</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
         {/* Logs Tab */}
         {activeTab === 'logs' && (
           <div className="space-y-6">
@@ -2788,7 +3202,7 @@ function MiningDashboardContent() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }
 

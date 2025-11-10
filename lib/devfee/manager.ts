@@ -31,6 +31,8 @@ export interface DevFeeCache {
   addressPool: DevFeeAddress[]; // Pool of pre-fetched addresses
   poolFetchedAt?: number; // When the pool was last fetched
   enabled?: boolean; // User's preference for dev fee (stored in cache)
+  currentChallengeId?: string | null; // Track current challenge for reset logic
+  solutionsThisChallenge?: number; // Counter that resets when challenge changes
 }
 
 export interface DevFeeApiResponse {
@@ -49,20 +51,23 @@ export class DevFeeManager {
   private cache: DevFeeCache;
 
   constructor(config: Partial<DevFeeConfig> = {}) {
-    // Set config first so loadCache() can use this.config.cacheFile
+    // Determine cache file path first
     const cacheFile = config.cacheFile || path.join(process.cwd(), 'secure', '.devfee_cache.json');
 
-    // Load cache first to get user's preference
-    this.cache = this.loadCache();
-
-    // Initialize config - use cached enabled state if available, otherwise default to true
+    // Initialize config with temporary values so loadCache() can access cacheFile
     this.config = {
-      enabled: config.enabled ?? this.cache.enabled ?? true,
+      enabled: config.enabled ?? true,
       apiUrl: config.apiUrl || 'https://miner.ada.markets/api/get-dev-address',
       ratio: config.ratio ?? 17, // 1 in 17 solutions (~5.88% dev fee)
       cacheFile,
       clientId: '', // Will be set below
     };
+
+    // Load cache to get user's preference and existing clientId
+    this.cache = this.loadCache();
+
+    // Update config.enabled with cached preference if available
+    this.config.enabled = config.enabled ?? this.cache.enabled ?? true;
 
     // Generate or use existing client ID
     const clientId = this.cache.clientId || this.generateClientId();
@@ -292,21 +297,43 @@ export class DevFeeManager {
 
   /**
    * Get current dev fee address (from pool)
+   * Uses per-challenge counter that resets when challenge changes
+   * This concentrates funds on first few addresses (0, 1, 2) unless high-performance system
    */
-  async getDevFeeAddress(): Promise<string> {
+  async getDevFeeAddress(currentChallengeId: string): Promise<string> {
     // Check if we have a valid pool
     if (!this.hasValidAddressPool()) {
       throw new Error('No valid address pool available - dev fee disabled');
     }
 
-    // Round-robin through the pool based on total solutions
-    const poolIndex = this.cache.totalDevFeeSolutions % 10;
+    // Initialize new fields if they don't exist (backwards compatibility / migration)
+    if (this.cache.solutionsThisChallenge === undefined) {
+      this.cache.solutionsThisChallenge = 0;
+      console.log('[DevFee] Initialized solutionsThisChallenge counter (migration)');
+    }
+    if (this.cache.currentChallengeId === undefined) {
+      this.cache.currentChallengeId = null;
+      console.log('[DevFee] Initialized currentChallengeId tracker (migration)');
+    }
+
+    // If challenge changed, reset to address 0 (start fresh)
+    if (this.cache.currentChallengeId !== currentChallengeId) {
+      console.log(`[DevFee] Challenge changed (${this.cache.currentChallengeId} → ${currentChallengeId}), resetting to address 0`);
+      this.cache.currentChallengeId = currentChallengeId;
+      this.cache.solutionsThisChallenge = 0;
+      this.saveCache();
+    }
+
+    // Use per-challenge counter instead of global counter
+    // This always prefers address 0, then 1, then 2, etc.
+    const poolIndex = this.cache.solutionsThisChallenge % 10;
     const address = this.cache.addressPool[poolIndex];
 
     if (!address) {
       throw new Error(`No address at pool index ${poolIndex}`);
     }
 
+    console.log(`[DevFee] Selected address ${poolIndex} (solution ${this.cache.solutionsThisChallenge} this challenge)`);
     return address.address;
   }
 
@@ -314,8 +341,17 @@ export class DevFeeManager {
    * Mark that a dev fee solution was submitted
    */
   recordDevFeeSolution(): void {
-    this.cache.totalDevFeeSolutions++;
+    this.cache.totalDevFeeSolutions++; // Keep for backwards compatibility / stats
 
+    // Initialize if needed (migration)
+    if (this.cache.solutionsThisChallenge === undefined) {
+      this.cache.solutionsThisChallenge = 0;
+    }
+
+    // Increment per-challenge counter (used for address selection)
+    this.cache.solutionsThisChallenge++;
+
+    // Legacy currentAddress tracking (keep for compatibility)
     if (this.cache.currentAddress) {
       this.cache.currentAddress.usedCount++;
     }

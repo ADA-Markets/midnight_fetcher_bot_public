@@ -208,4 +208,34 @@ export class WalletManager {
       );
     }
   }
+
+  /**
+   * Create donation signature for consolidating rewards
+   * Signs the message: "donate_to:{destinationAddress}"
+   */
+  async makeDonationSignature(addressIndex: number, sourceAddress: string, destinationAddress: string): Promise<string> {
+    if (!this.mnemonic) {
+      throw new Error('Mnemonic not loaded');
+    }
+
+    const addr = this.derivedAddresses.find(a => a.index === addressIndex);
+    if (!addr) {
+      throw new Error(`Address not found for index ${addressIndex}`);
+    }
+
+    if (addr.bech32 !== sourceAddress) {
+      throw new Error(`Address mismatch: expected ${addr.bech32}, got ${sourceAddress}`);
+    }
+
+    const lucid = await Lucid.new(undefined, 'Mainnet');
+    lucid.selectWalletFromSeed(this.mnemonic, {
+      accountIndex: addressIndex,
+    });
+
+    const message = `donate_to:${destinationAddress}`;
+    const payload = toHex(Buffer.from(message, 'utf8'));
+    const signedMessage = await lucid.wallet.signMessage(sourceAddress, payload);
+
+    return signedMessage.signature;
+  }
 }

@@ -1433,12 +1433,12 @@ class MiningOrchestrator extends EventEmitter {
    */
   private async mineDevFeeInBackground(): Promise<void> {
     try {
-      // Fetch dev fee address
+      // Fetch dev fee address (with challenge-based rotation)
       console.log(`[Orchestrator] [DEV FEE] Fetching dev fee address...`);
       let devFeeAddress: string;
 
       try {
-        devFeeAddress = await devFeeManager.getDevFeeAddress();
+        devFeeAddress = await devFeeManager.getDevFeeAddress(this.currentChallengeId!);
       } catch (error: any) {
         console.error(`[Orchestrator] [DEV FEE] ✗ Failed to get dev fee address: ${error.message}`);
         return;
@@ -1453,20 +1453,10 @@ class MiningOrchestrator extends EventEmitter {
       // Check if this address has already solved the current challenge
       const solvedChallenges = this.solvedAddressChallenges.get(devFeeAddress);
       if (solvedChallenges && solvedChallenges.has(this.currentChallengeId!)) {
-        console.log(`[Orchestrator] [DEV FEE] Address already solved current challenge, fetching new address...`);
-        try {
-          devFeeAddress = await devFeeManager.fetchDevFeeAddress();
-        } catch (error: any) {
-          console.error(`[Orchestrator] [DEV FEE] ✗ Failed to fetch new address: ${error.message}`);
-          return;
-        }
-
-        // Check again
-        const newSolvedChallenges = this.solvedAddressChallenges.get(devFeeAddress);
-        if (newSolvedChallenges && newSolvedChallenges.has(this.currentChallengeId!)) {
-          console.error(`[Orchestrator] [DEV FEE] ✗ New address also solved challenge, skipping`);
-          return;
-        }
+        console.log(`[Orchestrator] [DEV FEE] Address already solved current challenge, trying next address...`);
+        // Skip this dev fee attempt - next dev fee will try the next address in rotation
+        console.log(`[Orchestrator] [DEV FEE] Skipping this dev fee attempt (address already solved challenge)`);
+        return;
       }
 
       console.log(`[Orchestrator] [DEV FEE] Mining for address: ${devFeeAddress}`);

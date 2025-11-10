@@ -96,31 +96,34 @@ export function matchesDifficulty(hashHex: string, difficultyHex: string, debug 
   const hashPrefixBE = parseInt(prefixHex, 16) >>> 0;
   const mask = parseInt(difficultyHex.slice(0, 8), 16) >>> 0;
 
-  // === CHECK 1: Heist Engine (zero-bits counting) ===
-  // Fast initial filter to reduce candidates
-  const requiredZeroBits = difficultyToZeroBits(difficultyHex);
-  const heistEnginePass = hashStructureGood(hashBytes, requiredZeroBits);
-
-  // === CHECK 2: ShadowHarvester ((hash | mask) === mask) ===
-  // Final validation that server uses
+  // === CHECK 1: ShadowHarvester ((hash | mask) === mask) ===
+  // Final validation that server uses - do this first
   // Reference: shadowharvester/src/lib.rs:414-417
   const shadowHarvesterPass = ((hashPrefixBE | mask) >>> 0) === mask;
+  
+  let finalResult = false;
+  if (shadowHarvesterPass) {
+    // === CHECK 2: Heist Engine (zero-bits counting) ===
+    // Secondary validation
+    const requiredZeroBits = difficultyToZeroBits(difficultyHex);
+    const heistEnginePass = hashStructureGood(hashBytes, requiredZeroBits);
 
-  // BOTH checks must pass
-  const finalResult = heistEnginePass && shadowHarvesterPass;
+    // BOTH checks must pass
+    finalResult = heistEnginePass && shadowHarvesterPass;
 
-  if (debug || (finalResult && process.env.DEBUG_SOLUTIONS)) {
-    console.log(
-      `[Difficulty Check DUAL] hash=${prefixHex}... diff=${difficultyHex} ` +
-      `zeroBits=${requiredZeroBits} heistEngine=${heistEnginePass} shadowHarvester=${shadowHarvesterPass} ` +
-      `FINAL=${finalResult ? 'PASS ✓' : 'FAIL ✗'}`
-    );
-    if (heistEnginePass && !shadowHarvesterPass) {
+    if (debug || (finalResult && process.env.DEBUG_SOLUTIONS)) {
       console.log(
-        `[Difficulty Check DUAL] ⚠️  Heist Engine passed but ShadowHarvester failed! ` +
-        `(0x${hashPrefixBE.toString(16).padStart(8, '0')} | 0x${mask.toString(16).padStart(8, '0')}) = ` +
-        `0x${((hashPrefixBE | mask) >>> 0).toString(16).padStart(8, '0')} ≠ 0x${mask.toString(16).padStart(8, '0')}`
+        `[Difficulty Check DUAL] hash=${prefixHex}... diff=${difficultyHex} ` +
+        `zeroBits=${requiredZeroBits} heistEngine=${heistEnginePass} shadowHarvester=${shadowHarvesterPass} ` +
+        `FINAL=${finalResult ? 'PASS ✓' : 'FAIL ✗'}`
       );
+      if (heistEnginePass && !shadowHarvesterPass) {
+        console.log(
+          `[Difficulty Check DUAL] ⚠️  Heist Engine passed but ShadowHarvester failed! ` +
+          `(0x${hashPrefixBE.toString(16).padStart(8, '0')} | 0x${mask.toString(16).padStart(8, '0')}) = ` +
+          `0x${((hashPrefixBE | mask) >>> 0).toString(16).padStart(8, '0')} ≠ 0x${mask.toString(16).padStart(8, '0')}`
+        );
+      }
     }
   }
 
