@@ -378,6 +378,11 @@ async fn stats_handler() -> HttpResponse {
             info!("Resetting hourly hash counter (prevents overflow)");
             TOTAL_HASHES.store(0, Ordering::Relaxed);
             *reset_lock = Some(now);
+            // Reset stats to get correct H/s
+            {
+                let mut stats_lock = STATS_START_TIME.write().unwrap();
+                *stats_lock = Some(Instant::now());
+            }
         }
     }
 
