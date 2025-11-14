@@ -48,6 +48,23 @@ else
     echo "Hash server is not running"
 fi
 
+# Stop next-server
+if pgrep "next-server" > /dev/null; then
+    echo "Stopping next-server..."
+    pkill "next-server"
+    sleep 2
+
+    # Force kill if still running
+    if pgrep "next-server" > /dev/null; then
+        echo "  Force killing next-server..."
+        pkill -9 "next-server"
+    fi
+    echo "  ✓ next-server stopped"
+    STOPPED_ANY=true
+else
+    echo "next-server is not running"
+fi
+
 # Clean up any suspended background jobs in current shell
 jobs -p 2>/dev/null | xargs kill 2>/dev/null || true
 
