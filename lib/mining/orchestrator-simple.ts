@@ -42,6 +42,9 @@ export class SimplifiedOrchestrator extends EventEmitter {
   private workerRunning: Map<number, boolean> = new Map(); // Track which workers are active
   private solutionTimestamps: Array<{ timestamp: number }> = []; // Track solution timestamps for stats
   private readonly NUM_MINING_WORKERS = 4; // Number of parallel mining workers (reduced to prevent hash engine overwhelm)
+  private challengeTransitionStartTime: number | null = null; // When new challenge was first detected
+  private pendingChallenge: Challenge | null = null; // New challenge waiting to be activated
+  private readonly CHALLENGE_TRANSITION_BUFFER_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
 
   constructor() {
     super();
@@ -169,25 +172,56 @@ export class SimplifiedOrchestrator extends EventEmitter {
           this.currentChallenge.challenge_id !== newChallenge.challenge_id;
 
         if (challengeChanged) {
-          // If we have a current challenge, wait for all workers to finish
+          // If we have a current challenge, enter transition period
           if (this.currentChallenge) {
-            // Check if any workers are still running for the current challenge
+            // First time detecting new challenge - start transition buffer
+            if (!this.pendingChallenge || this.pendingChallenge.challenge_id !== newChallenge.challenge_id) {
+              this.pendingChallenge = newChallenge;
+              this.challengeTransitionStartTime = Date.now();
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ New challenge detected: ${newChallenge.challenge_id}`);
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Entering 10-minute transition buffer`);
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Workers will finish current challenge: ${this.currentChallenge.challenge_id}`);
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ No new workers will start during this period`);
+            }
+
+            // Check if we're still in the transition buffer period
+            const transitionElapsedMs = Date.now() - (this.challengeTransitionStartTime || 0);
+            const transitionRemainingMs = this.CHALLENGE_TRANSITION_BUFFER_MS - transitionElapsedMs;
+
+            if (transitionRemainingMs > 0) {
+              // Still in buffer period - check worker status
+              const activeWorkers = Array.from(this.workerRunning.entries())
+                .filter(([id, running]) => running && id <= this.NUM_MINING_WORKERS)
+                .length;
+
+              // Log status every 30 seconds (every 15th poll at 2-second interval)
+              const pollsElapsed = Math.floor(transitionElapsedMs / 2000);
+              if (pollsElapsed % 15 === 0) {
+                const minutesRemaining = Math.ceil(transitionRemainingMs / 60000);
+                Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Transition buffer: ${minutesRemaining} min remaining, ${activeWorkers} workers still active on old challenge`);
+              }
+
+              // Don't switch yet - still in buffer period
+              return;
+            }
+
+            // Buffer period ended - check if workers are done
             const activeWorkers = Array.from(this.workerRunning.entries())
               .filter(([id, running]) => running && id <= this.NUM_MINING_WORKERS)
               .length;
 
             if (activeWorkers > 0) {
-              Logger.log('mining',`[SimplifiedOrchestrator] New challenge detected but ${activeWorkers} workers still mining current challenge ${this.currentChallenge.challenge_id}`);
-              Logger.log('mining',`[SimplifiedOrchestrator] Waiting for workers to finish before switching...`);
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Buffer period ended but ${activeWorkers} workers still mining current challenge ${this.currentChallenge.challenge_id}`);
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Waiting for workers to finish before switching...`);
               return; // Don't switch yet - wait for workers to complete
             }
 
-            // All workers finished - mark current challenge as completed and switch
+            // All workers finished and buffer period ended - mark current challenge as completed and switch
             const completedCount = this.solvedAddresses.size;
             const totalCount = this.addresses.length;
             const completionPercentage = (completedCount / totalCount) * 100;
-            Logger.log('mining',`[SimplifiedOrchestrator] All workers finished. ${completionPercentage.toFixed(1)}% addresses processed for challenge: ${this.currentChallenge.challenge_id}`);
-            Logger.log('mining',`[SimplifiedOrchestrator] Switching to new challenge: ${newChallenge.challenge_id}`);
+            Logger.log('mining',`[SimplifiedOrchestrator] ✓ All workers finished. ${completionPercentage.toFixed(1)}% addresses processed for challenge: ${this.currentChallenge.challenge_id}`);
+            Logger.log('mining',`[SimplifiedOrchestrator] ✓ Switching to new challenge: ${newChallenge.challenge_id}`);
             challengeLogger.logChallenge({
               ts: new Date().toISOString(),
               challenge_id: this.currentChallenge.challenge_id,
@@ -222,6 +256,10 @@ export class SimplifiedOrchestrator extends EventEmitter {
 
           // Update current challenge
           this.currentChallenge = newChallenge;
+
+          // Clear transition tracking
+          this.pendingChallenge = null;
+          this.challengeTransitionStartTime = null;
 
           // Start all mining workers (they will process addresses sequentially)
           for (let workerId = 1; workerId <= this.NUM_MINING_WORKERS; workerId++) {
