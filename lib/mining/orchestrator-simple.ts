@@ -683,12 +683,21 @@ export class SimplifiedOrchestrator extends EventEmitter {
           ? (actualHashesPerSecond / stats.hash_rate) * 100
           : 0;
 
+        // Calculate expected solutions per hour based on difficulty
+        // Difficulty 6 requires approximately 16,777,216 hashes per solution (2^24)
+        // This is an estimate - actual results will vary due to randomness
+        const avgHashesPerSolution = 16_777_216; // Approximate for difficulty 6
+        const expectedSolutionsPerHour = stats.hash_rate > 0
+          ? (expectedHourlyHashes / avgHashesPerSolution)
+          : 0;
+
         Logger.log('mining',`[HashEngine Stats] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
         Logger.log('mining',`[HashEngine Stats] Hash Rate: ${this.formatHashRate(stats.hash_rate)}`);
         Logger.log('mining',`[HashEngine Stats] Expected/Hour: ${this.formatHashCount(expectedHourlyHashes)}`);
         Logger.log('mining',`[HashEngine Stats] Total Hashes: ${this.formatHashCount(stats.total_hashes)}`);
         Logger.log('mining',`[HashEngine Stats] Avg Rate: ${this.formatHashRate(actualHashesPerSecond)} (${performanceRatio.toFixed(0)}%)`);
         Logger.log('mining',`[HashEngine Stats] Solutions Found: ${stats.solutions_found}`);
+        Logger.log('mining',`[HashEngine Stats] Est. Solutions/Hour: ${expectedSolutionsPerHour.toFixed(2)}`);
         Logger.log('mining',`[HashEngine Stats] Uptime: ${this.formatUptime(stats.uptime_seconds)}`);
         Logger.log('mining',`[HashEngine Stats] Mining Active: ${stats.mining_active ? 'YES' : 'NO'}`);
         Logger.log('mining',`[HashEngine Stats] CPU Mode: ${stats.cpu_mode}`);
