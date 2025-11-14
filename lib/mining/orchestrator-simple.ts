@@ -614,7 +614,9 @@ export class SimplifiedOrchestrator extends EventEmitter {
       } else {
         Logger.warn('mining',`[SimplifiedOrchestrator] ⚠ Solution rejected: ${response.status} ${response.statusText}`);
         Logger.warn('mining',`[SimplifiedOrchestrator] Response:`, response.data);
-        throw new Error(`Server rejected solution: ${response.status} ${response.statusText}`);
+        // Include the server's error message in the thrown error so we can detect "already exists"
+        const serverMessage = response.data?.message || response.statusText;
+        throw new Error(`Server rejected solution: ${serverMessage}`);
       }
     } catch (error: any) {
       Logger.error('mining',`[SimplifiedOrchestrator] Failed to submit solution:`, error.message);
@@ -634,9 +636,20 @@ export class SimplifiedOrchestrator extends EventEmitter {
         const stats = await this.hashEngine.getStats();
         this.lastHashEngineStats = stats; // Save for getStats()
 
+        // Calculate expected vs actual hashes
+        const expectedHourlyHashes = stats.hash_rate * 3600; // hashes per hour based on current rate
+        const actualHashesPerSecond = stats.uptime_seconds > 0
+          ? stats.total_hashes / stats.uptime_seconds
+          : 0;
+        const performanceRatio = stats.hash_rate > 0
+          ? (actualHashesPerSecond / stats.hash_rate) * 100
+          : 0;
+
         Logger.log('mining',`[HashEngine Stats] ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
         Logger.log('mining',`[HashEngine Stats] Hash Rate: ${this.formatHashRate(stats.hash_rate)}`);
-        Logger.log('mining',`[HashEngine Stats] Total Hashes: ${stats.total_hashes.toLocaleString()}`);
+        Logger.log('mining',`[HashEngine Stats] Expected/Hour: ${this.formatHashCount(expectedHourlyHashes)}`);
+        Logger.log('mining',`[HashEngine Stats] Total Hashes: ${this.formatHashCount(stats.total_hashes)}`);
+        Logger.log('mining',`[HashEngine Stats] Avg Rate: ${this.formatHashRate(actualHashesPerSecond)} (${performanceRatio.toFixed(0)}%)`);
         Logger.log('mining',`[HashEngine Stats] Solutions Found: ${stats.solutions_found}`);
         Logger.log('mining',`[HashEngine Stats] Uptime: ${this.formatUptime(stats.uptime_seconds)}`);
         Logger.log('mining',`[HashEngine Stats] Mining Active: ${stats.mining_active ? 'YES' : 'NO'}`);
@@ -661,6 +674,21 @@ export class SimplifiedOrchestrator extends EventEmitter {
       return `${(hashRate / 1_000).toFixed(2)} KH/s`;
     } else {
       return `${hashRate.toFixed(0)} H/s`;
+    }
+  }
+
+  /**
+   * Format hash count for display
+   */
+  private formatHashCount(count: number): string {
+    if (count >= 1_000_000_000) {
+      return `${(count / 1_000_000_000).toFixed(2)}B`;
+    } else if (count >= 1_000_000) {
+      return `${(count / 1_000_000).toFixed(2)}M`;
+    } else if (count >= 1_000) {
+      return `${(count / 1_000).toFixed(2)}K`;
+    } else {
+      return `${count.toFixed(0)}`;
     }
   }
 
