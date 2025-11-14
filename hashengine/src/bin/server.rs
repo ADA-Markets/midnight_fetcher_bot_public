@@ -36,6 +36,7 @@ static TOTAL_HASHES: AtomicU64 = AtomicU64::new(0);
 static SOLUTIONS_FOUND: AtomicU64 = AtomicU64::new(0);
 static MINING_ACTIVE: AtomicBool = AtomicBool::new(false);
 static STATS_START_TIME: once_cell::sync::Lazy<RwLock<Option<Instant>>> = once_cell::sync::Lazy::new(|| RwLock::new(None));
+static LAST_RESET_TIME: once_cell::sync::Lazy<RwLock<Option<Instant>>> = once_cell::sync::Lazy::new(|| RwLock::new(None));
 
 // CPU usage mode - default to "normal" for better user experience
 static CPU_MODE: once_cell::sync::Lazy<RwLock<String>> = once_cell::sync::Lazy::new(|| RwLock::new("normal".to_string()));
@@ -360,6 +361,26 @@ async fn health_handler() -> HttpResponse {
 
 /// GET /stats - Get mining statistics and hash rate
 async fn stats_handler() -> HttpResponse {
+    // Check if we need to reset hourly counters (prevent overflow)
+    {
+        let mut reset_lock = LAST_RESET_TIME.write().unwrap();
+        let now = Instant::now();
+
+        let should_reset = if let Some(last_reset) = *reset_lock {
+            // Reset every hour
+            last_reset.elapsed() >= Duration::from_secs(3600)
+        } else {
+            // First time - initialize
+            true
+        };
+
+        if should_reset {
+            info!("Resetting hourly hash counter (prevents overflow)");
+            TOTAL_HASHES.store(0, Ordering::Relaxed);
+            *reset_lock = Some(now);
+        }
+    }
+
     let total_hashes = TOTAL_HASHES.load(Ordering::Relaxed);
     let solutions_found = SOLUTIONS_FOUND.load(Ordering::Relaxed);
     let mining_active = MINING_ACTIVE.load(Ordering::Relaxed);
@@ -711,6 +732,8 @@ async fn main() -> std::io::Result<()> {
             .route("/health", web::get().to(health_handler))
     })
     .workers(workers)
+    .keep_alive(Duration::from_secs(3600 * 24)) // 24 hour keep-alive for long-running mining requests
+    .client_request_timeout(Duration::from_secs(3600 * 24)) // 24 hour timeout
     .bind(format!("{}:{}", host, port))?
     .run()
     .await
