@@ -37,6 +37,9 @@ num_cpus = "1.16"
 # Performance: Fast memory allocator
 mimalloc = "0.1"
 
+# Performance: Faster RwLock implementation
+parking_lot = "0.12"
+
 [build-dependencies]
 
 [features]
