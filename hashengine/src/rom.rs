@@ -32,6 +32,7 @@ impl fmt::Display for RomDigest {
 pub struct Rom {
     pub digest: RomDigest,
     data: Vec<u8>,
+    chunk_count: u32,  // Pre-computed: data.len() / DATASET_ACCESS_SIZE (cached for performance)
 }
 
 /// The generation type of the **ROM**.
@@ -105,11 +106,14 @@ impl Rom {
             .finalize();
 
         let digest = random_gen(gen_type, seed, &mut data);
-        Self { digest, data }
+        let chunk_count = (data.len() / DATASET_ACCESS_SIZE) as u32;
+        Self { digest, data, chunk_count }
     }
 
     pub(crate) fn at(&self, i: u32) -> &[u8; DATASET_ACCESS_SIZE] {
-        let start = i as usize % (self.data.len() / DATASET_ACCESS_SIZE);
+        // Use pre-computed chunk_count instead of expensive division on every access
+        let chunk_idx = (i as usize) % (self.chunk_count as usize);
+        let start = chunk_idx * DATASET_ACCESS_SIZE;
         <&[u8; DATASET_ACCESS_SIZE]>::try_from(&self.data[start..start + DATASET_ACCESS_SIZE])
             .unwrap()
     }
@@ -313,9 +317,11 @@ pub fn build_rom_from_state(mut state: RomMixingState, size: usize) -> Rom {
     let final_digest_bytes = &state.digest_ctx.finalize();
     let final_digest = RomDigest(final_digest_bytes.as_slice().try_into().unwrap());
 
+    let chunk_count = (rom_data_vec.len() / DATASET_ACCESS_SIZE) as u32;
     Rom {
         digest: final_digest,
         data: rom_data_vec,
+        chunk_count,
     }
 }
 
