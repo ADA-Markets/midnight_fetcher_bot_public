@@ -6,6 +6,7 @@ use cryptoxide::{
 use std::{fmt, convert::TryInto};
 
 // function to help debug bytestrings
+#[allow(dead_code)]
 pub fn print_hex(name: &str, data: &[u8]) {
     print!("{}: ", name);
     for byte in data.iter() {
@@ -36,6 +37,7 @@ pub struct Rom {
 /// The generation type of the **ROM**.
 #[derive(Clone, Copy, Debug)]
 pub enum RomGenerationType {
+    #[allow(dead_code)]
     FullRandom,
     TwoStep {
         pre_size: usize,
@@ -46,6 +48,7 @@ pub enum RomGenerationType {
 // --- DEBUG STRUCT ---
 
 /// State required to generate the next chunk index and perform XOR mixing.
+#[allow(dead_code)]
 pub struct RomMixingState {
     pub mixing_buffer: Vec<u8>,
     pub offsets_bs: Vec<u8>,
@@ -101,7 +104,7 @@ impl Rom {
             .update(key)
             .finalize();
 
-        let digest = random_gen(gen_type, seed.try_into().unwrap(), &mut data);
+        let digest = random_gen(gen_type, seed, &mut data);
         Self { digest, data }
     }
 
@@ -180,6 +183,7 @@ fn random_gen(gen_type: RomGenerationType, seed: [u8; 32], output: &mut [u8]) ->
 // --- DEBUG FUNCTIONS EXPOSED FOR TESTING ---
 
 /// Runs setup logic and returns the initial state before the chunk loop starts.
+#[allow(dead_code)]
 pub fn new_debug(key: &[u8], gen_type: RomGenerationType, size: usize) -> RomMixingState {
     // 1. Run V0 seed logic
     let size_bytes = (size as u32).to_le_bytes();
@@ -195,7 +199,7 @@ pub fn new_debug(key: &[u8], gen_type: RomGenerationType, size: usize) -> RomMix
     };
 
     let mut mixing_buffer = vec![0; pre_size];
-    let seed: [u8; 32] = seed_raw.try_into().unwrap();
+    let seed: [u8; 32] = seed_raw;
     let data = vec![0; size];
     argon2::hprime(&mut mixing_buffer, &seed);
 
@@ -241,6 +245,7 @@ pub fn new_debug(key: &[u8], gen_type: RomGenerationType, size: usize) -> RomMix
 
 /// Generates the next chunk of ROM data using the current state and returns
 /// the resulting 64-byte mixed chunk. Does NOT update the final ROM data.
+#[allow(dead_code)]
 pub fn step_debug(state: &mut RomMixingState) -> [u8; DATASET_ACCESS_SIZE] {
     if state.steps_taken >= state.max_steps {
         panic!("Exceeded maximum mixing steps ({}) for ROM size.", state.max_steps);
@@ -294,6 +299,7 @@ pub fn step_debug(state: &mut RomMixingState) -> [u8; DATASET_ACCESS_SIZE] {
     actual_chunk
 }
 
+#[allow(dead_code)]
 pub fn build_rom_from_state(mut state: RomMixingState, size: usize) -> Rom {
     let mut rom_data_vec = Vec::with_capacity(size);
 

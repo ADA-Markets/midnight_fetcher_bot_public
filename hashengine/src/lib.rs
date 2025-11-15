@@ -1,3 +1,5 @@
+#![allow(non_snake_case)]
+
 // Import HashEngine modules
 mod hashengine;
 mod rom;
@@ -22,8 +24,8 @@ static ROM_READY: Mutex<bool> = Mutex::new(false);
 #[napi]
 pub fn init_rom(
   no_pre_mine_hex: String,
-  nb_loops: u32,
-  nb_instrs: u32,
+  _nb_loops: u32,
+  _nb_instrs: u32,
   pre_size: u32,
   rom_size: u32,
   mixing_numbers: u32,

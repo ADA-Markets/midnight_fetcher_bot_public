@@ -1,4 +1,4 @@
-use crate::rom::{RomGenerationType, Rom, RomDigest};
+use crate::rom::{Rom, RomDigest};
 
 
 use cryptoxide::{
@@ -7,11 +7,10 @@ use cryptoxide::{
 };
 
 // ** Consolidated Imports required for scavenge function **
-use std::sync::mpsc::{Sender, channel};
-use std::{sync::Arc, thread, time::SystemTime};
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 // use indicatif::{ProgressBar, ProgressStyle};
-use hex;
 // ************************************
 
 
@@ -130,8 +129,8 @@ impl VM {
         }
 
         let mut digests = init_buffer_digests.chunks(DIGEST_INIT_SIZE);
-        let prog_digest = Blake2b::<512>::new().update(&digests.next().unwrap());
-        let mem_digest = Blake2b::<512>::new().update(&digests.next().unwrap());
+        let prog_digest = Blake2b::<512>::new().update(digests.next().unwrap());
+        let mem_digest = Blake2b::<512>::new().update(digests.next().unwrap());
         let prog_seed = *<&[u8; 64]>::try_from(digests.next().unwrap()).unwrap();
 
         assert_eq!(digests.next(), None);
@@ -410,6 +409,7 @@ pub fn hash(salt: &[u8], rom: &Rom, nb_loops: u32, nb_instrs: u32) -> [u8; 64] {
     vm.finalize()
 }
 
+#[allow(dead_code)]
 pub fn hash_structure_good(hash: &[u8], zero_bits: usize) -> bool {
     let full_bytes = zero_bits / 8; // Number of full zero bytes
     let remaining_bits = zero_bits % 8; // Bits to check in the next byte
@@ -436,10 +436,12 @@ pub fn hash_structure_good(hash: &[u8], zero_bits: usize) -> bool {
 // SCAVENGE LOGIC
 // --------------------------------------------------------------------------
 
+#[allow(dead_code)]
 pub struct Thread {}
 
 // Structure to hold dynamic challenge parameters from the API
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct ChallengeParams {
     pub rom_key: String, // no_pre_mine hex string (used for ROM init)
     pub difficulty_mask: String, // difficulty hex string (used for submission check)
@@ -452,12 +454,14 @@ pub struct ChallengeParams {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub enum Result {
     Progress(usize),
     Found(u64), // We search for the 64-bit nonce value
 }
 
 // Helper to build the preimage string as specified in the API documentation
+#[allow(dead_code)]
 pub fn build_preimage(
     nonce: u64,
     address: &str,
@@ -480,6 +484,7 @@ pub fn build_preimage(
 }
 
 // Utility function to convert difficulty mask (e.g., "000FFFFF") to number of required zero bits
+#[allow(dead_code)]
 fn difficulty_to_zero_bits(difficulty_hex: &str) -> usize {
     let difficulty_bytes = hex::decode(difficulty_hex).unwrap();
     let mut zero_bits = 0;
@@ -495,6 +500,7 @@ fn difficulty_to_zero_bits(difficulty_hex: &str) -> usize {
 }
 
 // The worker thread function
+#[allow(dead_code)]
 fn spin(params: ChallengeParams, sender: Sender<Result>, stop_signal: Arc<AtomicBool>, start_nonce: u64, step_size: u64) {
     let mut nonce_value = start_nonce;
     const CHUNKS_SIZE: usize = 0xff;
@@ -523,10 +529,10 @@ fn spin(params: ChallengeParams, sender: Sender<Result>, stop_signal: Arc<Atomic
             return;
         }
 
-        if nonce_value & (CHUNKS_SIZE as u64) == 0 {
-            if sender.send(Result::Progress(CHUNKS_SIZE)).is_err() {
-                 return;
-            }
+        if nonce_value & (CHUNKS_SIZE as u64) == 0
+            && sender.send(Result::Progress(CHUNKS_SIZE)).is_err()
+        {
+            return;
         }
 
         // Increment nonce by the thread step size

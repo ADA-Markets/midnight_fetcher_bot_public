@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpResponse, HttpServer, middleware};
+use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock};
 use rayon::prelude::*;
@@ -30,6 +30,7 @@ struct InitRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AshConfig {
     #[serde(rename = "nbLoops")]
     nb_loops: u32,
@@ -192,7 +193,7 @@ async fn hash_batch_handler(req: web::Json<BatchHashRequest>) -> HttpResponse {
         })
         .collect();
 
-    let hash_duration = hash_start.elapsed();
+    let _hash_duration = hash_start.elapsed();
     let total_duration = batch_start.elapsed();
     let throughput = (preimage_count as f64 / total_duration.as_secs_f64()) as u64;
 
