@@ -35,6 +35,9 @@ struct VM {
     prog_seed: [u8; 64],
     memory_counter: u32,
     loop_counter: u32,
+    // Performance optimization: cache finalized digest values
+    cached_prog_value: Option<u64>,
+    cached_mem_value: Option<u64>,
 }
 
 #[derive(Clone, Copy)]
@@ -146,6 +149,8 @@ impl VM {
             ip: 0,
             loop_counter: 0,
             memory_counter: 0,
+            cached_prog_value: None,
+            cached_mem_value: None,
         }
     }
 
@@ -291,25 +296,40 @@ fn execute_one_instruction(vm: &mut VM, rom: &Rom) {
         ($vm:ident, $rom:ident, $addr:ident) => {{
             let mem = rom.at($addr as u32);
             $vm.mem_digest.update_mut(mem);
+            $vm.cached_mem_value = None;  // Invalidate cache after updating digest
             $vm.memory_counter = $vm.memory_counter.wrapping_add(1);
 
-            // divide memory access into 8 chunks of 8 bytes
-            let idx = (($vm.memory_counter % (64 / 8)) as usize) * 8;
+            // divide memory access into 8 chunks of 8 bytes using bitwise AND (faster than modulo)
+            let idx = (($vm.memory_counter & 0x07) as usize) * 8;
             u64::from_le_bytes(*<&[u8; 8]>::try_from(&mem[idx..idx + 8]).unwrap())
         }};
     }
 
     macro_rules! special1_value64 {
         ($vm:ident) => {{
-            let r = $vm.prog_digest.clone().finalize();
-            u64::from_le_bytes(*<&[u8; 8]>::try_from(&r[0..8]).unwrap())
+            // Use cached value if available, otherwise compute and cache
+            if let Some(cached) = $vm.cached_prog_value {
+                cached
+            } else {
+                let r = $vm.prog_digest.clone().finalize();
+                let value = u64::from_le_bytes(*<&[u8; 8]>::try_from(&r[0..8]).unwrap());
+                $vm.cached_prog_value = Some(value);
+                value
+            }
         }};
     }
 
     macro_rules! special2_value64 {
         ($vm:ident) => {{
-            let r = $vm.mem_digest.clone().finalize();
-            u64::from_le_bytes(*<&[u8; 8]>::try_from(&r[0..8]).unwrap())
+            // Use cached value if available, otherwise compute and cache
+            if let Some(cached) = $vm.cached_mem_value {
+                cached
+            } else {
+                let r = $vm.mem_digest.clone().finalize();
+                let value = u64::from_le_bytes(*<&[u8; 8]>::try_from(&r[0..8]).unwrap());
+                $vm.cached_mem_value = Some(value);
+                value
+            }
         }};
     }
 
@@ -367,11 +387,9 @@ fn execute_one_instruction(vm: &mut VM, rom: &Rom) {
                         .update(&src1.to_le_bytes())
                         .update(&src2.to_le_bytes())
                         .finalize();
-                    if let Some(chunk) = out.chunks(8).nth(v as usize) {
-                        u64::from_le_bytes(*<&[u8; 8]>::try_from(chunk).unwrap())
-                    } else {
-                        panic!("chunk doesn't exist")
-                    }
+                    // Direct array index instead of chunks().nth() for better performance
+                    let byte_offset = (v as usize) * 8;
+                    u64::from_le_bytes(*<&[u8; 8]>::try_from(&out.as_slice()[byte_offset..byte_offset + 8]).unwrap())
                 }
             };
 
@@ -397,6 +415,7 @@ fn execute_one_instruction(vm: &mut VM, rom: &Rom) {
         }
     }
     vm.prog_digest.update_mut(&prog_chunk);
+    vm.cached_prog_value = None;  // Invalidate cache after updating prog_digest
 }
 
 pub fn hash(salt: &[u8], rom: &Rom, nb_loops: u32, nb_instrs: u32) -> [u8; 64] {
