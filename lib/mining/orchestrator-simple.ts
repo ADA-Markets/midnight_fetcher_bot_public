@@ -44,7 +44,7 @@ export class SimplifiedOrchestrator extends EventEmitter {
   private readonly NUM_MINING_WORKERS = 4; // Number of parallel mining workers (reduced to prevent hash engine overwhelm)
   private challengeTransitionStartTime: number | null = null; // When new challenge was first detected
   private pendingChallenge: Challenge | null = null; // New challenge waiting to be activated
-  private readonly CHALLENGE_TRANSITION_BUFFER_MS = 10 * 60 * 1000; // 10 minutes in milliseconds
+  private readonly CHALLENGE_TRANSITION_BUFFER_MS = 15 * 60 * 1000; // 15 minutes in milliseconds
 
   constructor() {
     super();
@@ -179,7 +179,7 @@ export class SimplifiedOrchestrator extends EventEmitter {
               this.pendingChallenge = newChallenge;
               this.challengeTransitionStartTime = Date.now();
               Logger.log('mining',`[SimplifiedOrchestrator] ⏰ New challenge detected: ${newChallenge.challenge_id}`);
-              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Entering 10-minute transition buffer`);
+              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Entering 15-minute transition buffer`);
               Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Workers will finish current challenge: ${this.currentChallenge.challenge_id}`);
               Logger.log('mining',`[SimplifiedOrchestrator] ⏰ No new workers will start during this period`);
             }
