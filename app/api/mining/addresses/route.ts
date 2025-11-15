@@ -166,8 +166,8 @@ export async function GET(request: NextRequest) {
     // Calculate summary stats
     const summary = {
       totalAddresses: enrichedAddresses.length,
-      registeredAddresses: enrichedAddresses.filter(a => a.registered).length,
-      solvedCurrentChallenge: enrichedAddresses.filter(a => a.solvedCurrentChallenge).length,
+      registeredAddresses: enrichedAddresses.filter((a: any) => a.registered).length,
+      solvedCurrentChallenge: enrichedAddresses.filter((a: any) => a.solvedCurrentChallenge).length,
     };
 
     return NextResponse.json({
