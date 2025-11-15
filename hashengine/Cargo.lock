@@ -18,6 +18,7 @@ dependencies = [
  "napi-derive",
  "num_cpus",
  "once_cell",
+ "parking_lot",
  "rayon",
  "serde",
  "serde_json",
