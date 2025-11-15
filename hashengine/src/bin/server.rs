@@ -1,6 +1,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+use parking_lot::RwLock;
 use rayon::prelude::*;
 use log::{info, error, warn, debug};
 
@@ -97,7 +98,7 @@ async fn init_handler(req: web::Json<InitRequest>) -> HttpResponse {
 
     // Check if ROM already initialized with different no_pre_mine
     {
-        let rom_lock = ROM.read().unwrap();
+        let rom_lock = ROM.read();
         if rom_lock.is_some() {
             warn!("ROM already initialized, reinitializing for new challenge...");
         }
@@ -121,7 +122,7 @@ async fn init_handler(req: web::Json<InitRequest>) -> HttpResponse {
     // Store ROM in global state (replace if already exists)
     let rom_arc = Arc::new(rom);
     {
-        let mut rom_lock = ROM.write().unwrap();
+        let mut rom_lock = ROM.write();
         *rom_lock = Some(rom_arc);
     }
 
@@ -136,7 +137,7 @@ async fn init_handler(req: web::Json<InitRequest>) -> HttpResponse {
 
 /// POST /hash - Hash single preimage
 async fn hash_handler(req: web::Json<HashRequest>) -> HttpResponse {
-    let rom_lock = ROM.read().unwrap();
+    let rom_lock = ROM.read();
     let rom = match rom_lock.as_ref() {
         Some(r) => Arc::clone(r),
         None => {
@@ -161,7 +162,7 @@ async fn hash_handler(req: web::Json<HashRequest>) -> HttpResponse {
 async fn hash_batch_handler(req: web::Json<BatchHashRequest>) -> HttpResponse {
     let batch_start = std::time::Instant::now();
 
-    let rom_lock = ROM.read().unwrap();
+    let rom_lock = ROM.read();
     let rom = match rom_lock.as_ref() {
         Some(r) => Arc::clone(r),
         None => {
@@ -225,7 +226,7 @@ async fn hash_batch_shared_handler(req: web::Json<serde_json::Value>) -> HttpRes
         }
     };
 
-    let rom_lock = ROM.read().unwrap();
+    let rom_lock = ROM.read();
     let rom = match rom_lock.as_ref() {
         Some(r) => Arc::clone(r),
         None => {
@@ -273,7 +274,7 @@ async fn hash_batch_shared_handler(req: web::Json<serde_json::Value>) -> HttpRes
 
 /// GET /health - Health check endpoint
 async fn health_handler() -> HttpResponse {
-    let rom_lock = ROM.read().unwrap();
+    let rom_lock = ROM.read();
     let rom_initialized = rom_lock.is_some();
     drop(rom_lock);
 
