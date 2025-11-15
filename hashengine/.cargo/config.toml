@@ -1,0 +1,6 @@
+[build]
+rustflags = ["-C", "target-cpu=native"]
+
+# This enables CPU-specific optimizations for your hardware
+# Including AVX2/AVX-512 SIMD instructions for blake2b_simd
+# Binary will only run on similar CPUs - do not distribute this build

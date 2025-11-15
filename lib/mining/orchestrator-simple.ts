@@ -205,18 +205,16 @@ export class SimplifiedOrchestrator extends EventEmitter {
               return;
             }
 
-            // Buffer period ended - check if workers are done
+            // Buffer period ended - force switch to new challenge
+            // Workers will naturally exit their loops when they check currentChallenge
             const activeWorkers = Array.from(this.workerRunning.entries())
               .filter(([id, running]) => running && id <= this.NUM_MINING_WORKERS)
               .length;
 
-            if (activeWorkers > 0) {
-              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Buffer period ended but ${activeWorkers} workers still mining current challenge ${this.currentChallenge.challenge_id}`);
-              Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Waiting for workers to finish before switching...`);
-              return; // Don't switch yet - wait for workers to complete
-            }
+            Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Buffer period ended with ${activeWorkers} workers still active`);
+            Logger.log('mining',`[SimplifiedOrchestrator] ⏰ Force switching to new challenge - workers will exit their loops`);
 
-            // All workers finished and buffer period ended - mark current challenge as completed and switch
+            // Mark current challenge as completed and switch immediately
             const completedCount = this.solvedAddresses.size;
             const totalCount = this.addresses.length;
             const completionPercentage = (completedCount / totalCount) * 100;
@@ -287,6 +285,12 @@ export class SimplifiedOrchestrator extends EventEmitter {
 
     try {
       while (this.isRunning && this.currentChallenge?.challenge_id === challenge.challenge_id) {
+        // CRITICAL: Don't pick up new work during transition buffer
+        if (this.pendingChallenge) {
+          Logger.log('mining', `[SimplifiedOrchestrator] Worker ${workerId}: In transition buffer, not picking up new work`);
+          break;
+        }
+
         // Find next unsolved address (not solved and not currently being mined)
         // Check receipts to see if we already have a solution for this challenge+address combo
         const nextAddress = this.addresses.find(addr => {
@@ -317,6 +321,12 @@ export class SimplifiedOrchestrator extends EventEmitter {
           break;
         }
 
+        // Check if challenge changed before starting new mining operation
+        if (this.currentChallenge?.challenge_id !== challenge.challenge_id) {
+          Logger.log('mining', `[SimplifiedOrchestrator] Worker ${workerId}: Challenge changed, exiting loop`);
+          break;
+        }
+
         // Mark address as in-progress before mining (prevents other workers from picking it)
         this.inProgressAddresses.add(nextAddress.bech32);
         Logger.log('mining', `[SimplifiedOrchestrator] Worker ${workerId}: Marked address ${nextAddress.index} as in-progress`);
@@ -327,6 +337,12 @@ export class SimplifiedOrchestrator extends EventEmitter {
         } finally {
           // Remove from in-progress (it's now either solved or errored)
           this.inProgressAddresses.delete(nextAddress.bech32);
+        }
+
+        // Check again after mining operation completes
+        if (this.currentChallenge?.challenge_id !== challenge.challenge_id) {
+          Logger.log('mining', `[SimplifiedOrchestrator] Worker ${workerId}: Challenge changed after mining, exiting loop`);
+          break;
         }
       }
     } finally {
@@ -360,8 +376,9 @@ export class SimplifiedOrchestrator extends EventEmitter {
     let solution: any = null;
 
     try {
-      // This call blocks until solution found!
-      result = await this.hashEngine.startContinuousMining({
+      // Set 30-minute timeout for mining to prevent indefinite hangs
+      const MINING_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+      const miningPromise = this.hashEngine.startContinuousMining({
         worker_id: workerId,
         address: addr.bech32,
         challenge: {
@@ -373,6 +390,13 @@ export class SimplifiedOrchestrator extends EventEmitter {
         },
       });
 
+      // Race between mining and timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Mining timeout after 30 minutes')), MINING_TIMEOUT_MS);
+      });
+
+      result = await Promise.race([miningPromise, timeoutPromise]);
+
       // Solution found!
       solution = result.solutions[0];
       Logger.log('mining',`[SimplifiedOrchestrator] ========== SOLUTION FOUND ==========`);
@@ -382,6 +406,18 @@ export class SimplifiedOrchestrator extends EventEmitter {
       Logger.log('mining',`[SimplifiedOrchestrator] Hash: ${solution.hash.slice(0, 32)}...`);
       Logger.log('mining',`[SimplifiedOrchestrator] Hashes computed: ${result.hashes_computed}`);
       Logger.log('mining',`[SimplifiedOrchestrator] ====================================`);
+
+      // Check if challenge changed - only reject if it's genuinely a different challenge
+      // NOTE: Solutions for old challenges CAN still be submitted and accepted by the server
+      if (this.currentChallenge && this.currentChallenge.challenge_id !== challenge.challenge_id) {
+        Logger.warn('mining',`[SimplifiedOrchestrator] ${workerLabel}: Challenge changed! Mined for ${challenge.challenge_id}, current is ${this.currentChallenge.challenge_id}`);
+        Logger.warn('mining',`[SimplifiedOrchestrator] ${workerLabel}: Discarding solution - server will reject it`);
+        // Don't mark as solved - let it retry with new challenge
+        return;
+      }
+
+      // NOTE: During transition (pendingChallenge exists), we can STILL submit solutions
+      // for the old challenge. The server accepts solutions for previous challenges.
 
       // Submit to Midnight API
       await this.submitSolution(addr, challenge.challenge_id, solution.nonce, false);
@@ -402,6 +438,13 @@ export class SimplifiedOrchestrator extends EventEmitter {
       Logger.log('mining',`[SimplifiedOrchestrator] ${workerLabel}: Solution submitted successfully`);
     } catch (error: any) {
       Logger.error('mining',`[SimplifiedOrchestrator] ${workerLabel} error:`, error.message);
+
+      // Handle timeout - worker will retry this address in next loop iteration
+      if (error.message?.includes('timeout')) {
+        Logger.warn('mining',`[SimplifiedOrchestrator] ${workerLabel}: Mining timeout - will retry address later`);
+        // Don't mark as solved - let it retry
+        return;
+      }
 
       // Check if solution already exists - if so, mark as solved to avoid retrying
       if ((error.message?.includes('Solution already exists') ||
@@ -501,8 +544,9 @@ export class SimplifiedOrchestrator extends EventEmitter {
     let solution: any = null;
 
     try {
-      // This call blocks until solution found!
-      result = await this.hashEngine.startContinuousMining({
+      // Set 30-minute timeout for mining to prevent indefinite hangs
+      const MINING_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+      const miningPromise = this.hashEngine.startContinuousMining({
         worker_id: 5,
         address: devFeeAddress,
         challenge: {
@@ -513,6 +557,13 @@ export class SimplifiedOrchestrator extends EventEmitter {
           no_pre_mine_hour: challenge.no_pre_mine_hour,
         },
       });
+
+      // Race between mining and timeout
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Mining timeout after 30 minutes')), MINING_TIMEOUT_MS);
+      });
+
+      result = await Promise.race([miningPromise, timeoutPromise]);
 
       // Solution found!
       solution = result.solutions[0];

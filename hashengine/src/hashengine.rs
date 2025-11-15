@@ -7,6 +7,7 @@ use cryptoxide::{
 
 // Use SIMD-optimized Blake2b for better performance
 use blake2b_simd::{Params, State};
+use once_cell::sync::Lazy;
 
 // ** Consolidated Imports required for scavenge function **
 use std::sync::mpsc::{Sender, channel};
@@ -15,6 +16,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // use indicatif::{ProgressBar, ProgressStyle};
 use hex;
 // ************************************
+
+// OPTIMIZATION: Lazy static initialization of Blake2b params to avoid repeated initialization
+static BLAKE2B_PARAMS_64: Lazy<Params> = Lazy::new(|| Params::new().hash_length(64).to_owned());
 
 
 // 1 byte operator
@@ -132,9 +136,9 @@ impl VM {
         }
 
         let mut digests = init_buffer_digests.chunks(DIGEST_INIT_SIZE);
-        let mut prog_digest = Params::new().hash_length(64).to_state();
+        let mut prog_digest = BLAKE2B_PARAMS_64.to_state();
         prog_digest.update(digests.next().unwrap());
-        let mut mem_digest = Params::new().hash_length(64).to_state();
+        let mut mem_digest = BLAKE2B_PARAMS_64.to_state();
         mem_digest.update(digests.next().unwrap());
         let prog_seed = *<&[u8; 64]>::try_from(digests.next().unwrap()).unwrap();
 
@@ -174,7 +178,7 @@ impl VM {
         mem_state.update(&sum_regs.to_le_bytes());
         let mem_value = mem_state.finalize();
 
-        let mut mixing_state = Params::new().hash_length(64).to_state();
+        let mut mixing_state = BLAKE2B_PARAMS_64.to_state();
         mixing_state.update(prog_value.as_bytes());
         mixing_state.update(mem_value.as_bytes());
         mixing_state.update(&self.loop_counter.to_le_bytes());
@@ -204,7 +208,7 @@ impl VM {
     pub fn finalize(self) -> [u8; 64] {
         let prog_digest = self.prog_digest.finalize();
         let mem_digest = self.mem_digest.finalize();
-        let mut context = Params::new().hash_length(64).to_state();
+        let mut context = BLAKE2B_PARAMS_64.to_state();
         context.update(prog_digest.as_bytes());
         context.update(mem_digest.as_bytes());
         context.update(&self.memory_counter.to_le_bytes());
@@ -366,7 +370,7 @@ fn execute_one_instruction(vm: &mut VM, rom: &Rom) {
                 Op3::And => src1 & src2,
                 Op3::Hash(v) => {
                     assert!(v < 8);
-                    let mut hash_state = Params::new().hash_length(64).to_state();
+                    let mut hash_state = BLAKE2B_PARAMS_64.to_state();
                     hash_state.update(&src1.to_le_bytes());
                     hash_state.update(&src2.to_le_bytes());
                     let out = hash_state.finalize();

@@ -1,0 +1,124 @@
+{
+  "timestamp": "2025-11-15T14:12:32.324Z",
+  "startTime": 1763215951771,
+  "romInitTime": 8,
+  "singleHash": {
+    "avg": 1.2,
+    "min": 1,
+    "max": 2,
+    "hashesPerSecond": 833.3333333333334
+  },
+  "batches": [
+    {
+      "batchSize": 1,
+      "avg": 1,
+      "min": 1,
+      "max": 1,
+      "median": 1,
+      "hashesPerSecond": 1000,
+      "timings": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "batchSize": 10,
+      "avg": 1.6,
+      "min": 1,
+      "max": 2,
+      "median": 2,
+      "hashesPerSecond": 6250,
+      "timings": [
+        1,
+        1,
+        2,
+        2,
+        2
+      ]
+    },
+    {
+      "batchSize": 50,
+      "avg": 3.4,
+      "min": 3,
+      "max": 4,
+      "median": 3,
+      "hashesPerSecond": 14705.882352941178,
+      "timings": [
+        3,
+        3,
+        3,
+        4,
+        4
+      ]
+    },
+    {
+      "batchSize": 100,
+      "avg": 5.8,
+      "min": 5,
+      "max": 6,
+      "median": 6,
+      "hashesPerSecond": 17241.37931034483,
+      "timings": [
+        5,
+        6,
+        6,
+        6,
+        6
+      ]
+    },
+    {
+      "batchSize": 200,
+      "avg": 13,
+      "min": 11,
+      "max": 15,
+      "median": 13,
+      "hashesPerSecond": 15384.615384615385,
+      "timings": [
+        11,
+        12,
+        13,
+        14,
+        15
+      ]
+    },
+    {
+      "batchSize": 500,
+      "avg": 26.6,
+      "min": 25,
+      "max": 29,
+      "median": 26,
+      "hashesPerSecond": 18796.992481203008,
+      "timings": [
+        25,
+        26,
+        26,
+        27,
+        29
+      ]
+    },
+    {
+      "batchSize": 1000,
+      "avg": 50.8,
+      "min": 50,
+      "max": 52,
+      "median": 51,
+      "hashesPerSecond": 19685.03937007874,
+      "timings": [
+        50,
+        50,
+        51,
+        51,
+        52
+      ]
+    }
+  ],
+  "systemInfo": {
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v20.19.3",
+    "cpus": 24
+  }
+}

@@ -1,6 +1,7 @@
 use actix_web::{web, App, HttpResponse, HttpServer, middleware};
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, RwLock, atomic::{AtomicU64, AtomicBool, Ordering}};
+use std::cell::RefCell;
 use rayon::prelude::*;
 use log::{info, error, warn, debug};
 use std::time::{Instant, Duration};
@@ -8,6 +9,11 @@ use std::time::{Instant, Duration};
 // Performance: Use mimalloc as global allocator for better performance
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+// OPTIMIZATION: Thread-local buffer for zero-allocation preimage construction
+thread_local! {
+    static PREIMAGE_BUFFER: RefCell<Vec<u8>> = RefCell::new(vec![0; 512]);
+}
 
 // Import HashEngine modules
 mod hashengine {
@@ -25,7 +31,7 @@ mod validation {
 
 use hashengine::hash as sh_hash;
 use rom::{RomGenerationType, Rom};
-use preimage::{ChallengeData, build_preimage};
+use preimage::{ChallengeData, build_preimage, build_preimage_into_buffer};
 use validation::matches_difficulty;
 
 // Global ROM state using RwLock to allow reinitialization for new challenges
@@ -483,44 +489,57 @@ async fn start_mining_handler(req: web::Json<StartMiningRequest>) -> HttpRespons
     const BATCH_SIZE: usize = 10000; // Optimized batch size (4 workers × 10K = 40K total parallel hashing)
 
     loop {
-        // Generate batch of nonces and preimages
-        let batch_data: Vec<(String, String)> = (0..BATCH_SIZE)
-            .map(|i| {
-                let nonce_num = nonce_counter + i as u64;
-                let nonce_hex = format!("{:016x}", nonce_num);
-                let preimage = build_preimage(&nonce_hex, &req.address, &req.challenge);
-                (nonce_hex, preimage)
-            })
+        // OPTIMIZATION: Generate batch of nonces only (no preimage strings yet)
+        let batch_nonces: Vec<u64> = (0..BATCH_SIZE)
+            .map(|i| nonce_counter + i as u64)
             .collect();
 
         nonce_counter += BATCH_SIZE as u64;
 
-        // Parallel hash computation with inline validation
-        let found_solution: Option<Solution> = batch_data
+        // OPTIMIZATION: Parallel hash computation with zero-allocation preimage construction
+        let found_solution: Option<Solution> = batch_nonces
             .par_iter()
-            .find_map_any(|(nonce, preimage)| {
-                let salt = preimage.as_bytes();
-                let hash_bytes = sh_hash(salt, &rom, 8, 256);
+            .find_map_any(|&nonce_num| {
+                // Use thread-local buffer for preimage construction (zero allocations)
+                let hash_bytes = PREIMAGE_BUFFER.with(|buf| {
+                    let mut buffer = buf.borrow_mut();
+                    let len = build_preimage_into_buffer(nonce_num, &req.address, &req.challenge, &mut buffer);
+                    sh_hash(&buffer[..len], &rom, 8, 256)
+                });
+
+                // OPTIMIZATION: Only encode hash to hex for validation
                 let hash_hex = hex::encode(hash_bytes);
 
                 // Inline difficulty check (dual validation)
                 match matches_difficulty(&hash_hex, &req.challenge.difficulty) {
                     Ok(true) => {
+                        // OPTIMIZATION: Only build nonce/preimage strings when we have a solution
+                        let nonce_hex = format!("{:016x}", nonce_num);
+
+                        // Build preimage string for the solution
+                        let preimage = PREIMAGE_BUFFER.with(|buf| {
+                            let mut buffer = buf.borrow_mut();
+                            let len = build_preimage_into_buffer(nonce_num, &req.address, &req.challenge, &mut buffer);
+                            String::from_utf8_lossy(&buffer[..len]).to_string()
+                        });
+
                         info!(
                             "Worker {} found solution! Nonce: {}, Hash: {}...",
                             req.worker_id,
-                            nonce,
+                            nonce_hex,
                             &hash_hex[..16]
                         );
+
                         Some(Solution {
-                            nonce: nonce.clone(),
+                            nonce: nonce_hex,
                             hash: hash_hex,
-                            preimage: preimage.clone(),
+                            preimage,
                         })
                     }
                     Ok(false) => None,
                     Err(e) => {
-                        warn!("Validation error for nonce {}: {}", nonce, e);
+                        let nonce_hex = format!("{:016x}", nonce_num);
+                        warn!("Validation error for nonce {}: {}", nonce_hex, e);
                         None
                     }
                 }

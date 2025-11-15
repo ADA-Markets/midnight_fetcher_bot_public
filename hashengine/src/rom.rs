@@ -61,24 +61,49 @@ pub struct RomMixingState {
 
 // --- CORE UTILITY FUNCTIONS ---
 
+#[inline(always)]
 pub fn xorbuf(out: &mut [u8], input: &[u8]) {
     assert_eq!(out.len(), input.len());
     assert_eq!(out.len(), 64);
 
-    // Convert slice pointers to u64 pointers
+    // OPTIMIZATION: Force inline and unroll for better performance
+    // Using unaligned reads/writes for safety across all platforms
     let input_ptr = input.as_ptr() as *const u64;
     let out_ptr = out.as_mut_ptr() as *mut u64;
 
     unsafe {
-        // FIX: Use read_unaligned and write_unaligned to prevent memory alignment panics
-        for i in 0..8 {
-            let input_word = std::ptr::read_unaligned(input_ptr.offset(i));
-            let mut out_word = std::ptr::read_unaligned(out_ptr.offset(i));
+        // Manually unrolled for better performance (compiler will optimize further)
+        let mut out_word = std::ptr::read_unaligned(out_ptr);
+        out_word ^= std::ptr::read_unaligned(input_ptr);
+        std::ptr::write_unaligned(out_ptr, out_word);
 
-            out_word ^= input_word;
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(1));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(1));
+        std::ptr::write_unaligned(out_ptr.add(1), out_word);
 
-            std::ptr::write_unaligned(out_ptr.offset(i), out_word);
-        }
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(2));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(2));
+        std::ptr::write_unaligned(out_ptr.add(2), out_word);
+
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(3));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(3));
+        std::ptr::write_unaligned(out_ptr.add(3), out_word);
+
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(4));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(4));
+        std::ptr::write_unaligned(out_ptr.add(4), out_word);
+
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(5));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(5));
+        std::ptr::write_unaligned(out_ptr.add(5), out_word);
+
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(6));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(6));
+        std::ptr::write_unaligned(out_ptr.add(6), out_word);
+
+        let mut out_word = std::ptr::read_unaligned(out_ptr.add(7));
+        out_word ^= std::ptr::read_unaligned(input_ptr.add(7));
+        std::ptr::write_unaligned(out_ptr.add(7), out_word);
     }
 }
 
@@ -125,7 +150,8 @@ fn random_gen(gen_type: RomGenerationType, seed: [u8; 32], output: &mut [u8]) ->
         const OFFSET_LOOPS: u32 = 4;
 
         // Generate offsets_diff
-        let mut offsets_diff = vec![];
+        // OPTIMIZATION: Pre-allocate with exact capacity (32 u16s per loop * 4 loops = 128)
+        let mut offsets_diff = Vec::with_capacity((OFFSET_LOOPS * 32) as usize);
         for i in 0u32..OFFSET_LOOPS {
             let command = blake2b::Context::<512>::new()
                 .update(&seed)
@@ -201,7 +227,8 @@ pub fn new_debug(key: &[u8], gen_type: RomGenerationType, size: usize) -> RomMix
 
     // 3. Generate offsets_diff
     const OFFSET_LOOPS: u32 = 4;
-    let mut offsets_diff = vec![];
+    // OPTIMIZATION: Pre-allocate with exact capacity
+    let mut offsets_diff = Vec::with_capacity((OFFSET_LOOPS * 32) as usize);
     for i in 0u32..OFFSET_LOOPS {
         let command = blake2b::Context::<512>::new()
             .update(&seed)

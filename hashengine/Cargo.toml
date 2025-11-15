@@ -38,6 +38,9 @@ num_cpus = "1.16"
 # Performance: Fast memory allocator
 mimalloc = "0.1"
 
+# Performance: Lock-free channels and queues
+crossbeam = "0.8"
+
 [build-dependencies]
 
 [features]
