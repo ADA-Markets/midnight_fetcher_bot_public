@@ -106,6 +106,28 @@ This software includes a small development fee to support ongoing maintenance an
    **CPU Thread Configuration:** Scripts auto-detect CPU cores by default (max 32).
    Override with: `./start.sh 24` or `WORKERS=24 ./start.sh`
 
+### macOS Installation
+
+1. **Download** this repository (or clone with git)
+
+2. **Run initial setup** (first time only):
+  
+   Find out how many cores your Mac has by running:
+   ```bash
+   sysctl -n hw.ncpu
+   ```
+
+   Then run (replace `<number_of_cores>` with your core count or less):
+   ```bash
+   chmod +x setup.sh
+   ./setup.sh WORKERS=<number_of_cores>
+   ```
+
+4. **Access the app** at `http://localhost:3001`
+
+5. See Step 4 of the [Linux Installation instructions](#ubuntulinux-server-installation) for 
+   managing the services.
+   
 **Firewall Configuration** (if needed):
 ```bash
 sudo ufw allow 3001/tcp
@@ -114,9 +136,9 @@ sudo ufw reload
 
 ## Usage
 
-Run: setup.cmd
+Run: `setup.cmd`
 
-On Complete navigate on browser to
+On completion, open your browser and go to:
 
 http://localhost:3001
 
@@ -201,7 +223,7 @@ increase the below in lib\mining\orchestrator.ts
 const BATCH_SIZE = 350;
 private workerThreads = 12;
 
-increase or decrease these based on your hardware 
+increase or decrease these based on your hardware
 
 ## Troubleshooting
 
