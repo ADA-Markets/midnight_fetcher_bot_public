@@ -150,7 +150,7 @@ function MiningDashboardContent() {
   const [rewardsLastRefresh, setRewardsLastRefresh] = useState<number | null>(null);
 
   // DevFee state
-  const [devFeeEnabled, setDevFeeEnabled] = useState<boolean>(true);
+  const [devFeeEnabled, setDevFeeEnabled] = useState<boolean>(true); // Upstream default: enabled
   const [devFeeLoading, setDevFeeLoading] = useState(false);
   const [devFeeData, setDevFeeData] = useState<any | null>(null);
   const [historyLastRefresh, setHistoryLastRefresh] = useState<number | null>(null);
@@ -649,6 +649,14 @@ function MiningDashboardContent() {
             </div>
           </div>
           <div className="flex gap-3">
+            <Button
+              onClick={() => router.push('/wallet/consolidate')}
+              variant="primary"
+              size="md"
+            >
+              <Users className="w-4 h-4" />
+              Consolidate
+            </Button>
             {!stats.active ? (
               <Button
                 onClick={handleStartMining}

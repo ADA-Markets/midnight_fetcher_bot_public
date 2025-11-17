@@ -116,6 +116,15 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-3">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => router.push('/wallet/consolidate')}
+                className="bg-blue-600 hover:bg-blue-500"
+              >
+                <Wallet className="w-4 h-4 mr-2" />
+                Consolidate
+              </Button>
               <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
                 <BookOpen className="w-4 h-4 mr-2" />
                 Docs

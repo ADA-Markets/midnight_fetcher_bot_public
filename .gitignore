@@ -73,3 +73,7 @@ $RECYCLE.BIN/
 # Dev fee cache
 .devfee_cache.json
 nul
+
+# Local operational scripts (not for upstream PR)
+hashengine/watchdog.sh
+hashengine/install-service.sh
